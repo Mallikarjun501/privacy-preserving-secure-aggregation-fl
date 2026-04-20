@@ -1,0 +1,42 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Generated outputs
+results/
+data/*.pkl
+
+# Optional model checkpoints
+*.pt
+*.pth
+*.ckpt
+
+# Keep raw datasets tracked
+!KDDTrain+.txt
+!KDDTest+.txt
