@@ -171,7 +171,7 @@ esults/metrics.csv.
 
 ### Visual Workflow
 
-![Visual Workflow](images\visual_workflow.png)
+![Visual Workflow](images/visual_workflow.png)
 
 ---
 
@@ -587,7 +587,7 @@ TTEH LAB · School of Engineering · Dayananda Sagar University
 Bangalore - 562112, Karnataka, India
 
 <p align="left">
-  <img src="images\Dayananda-Sagar-University-Logo.png" alt="Dayananda Sagar University Logo" width="300"/>
+   <img src="images/Dayananda-Sagar-University-Logo.png" alt="Dayananda Sagar University Logo" width="300"/>
 </p>
 
 ---
