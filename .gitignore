@@ -1,5 +1,6 @@
 # Python bytecode
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 
@@ -24,12 +25,28 @@ desktop.ini
 # Test / coverage
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
 .tox/
 .nox/
 
+# Type checking / lint caches
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Notebook artifacts
+.ipynb_checkpoints/
+
 # Generated outputs
-results/
+results/*.tmp
+results/*.bak
+results/*.log
 data/*.pkl
 
 # Optional model checkpoints

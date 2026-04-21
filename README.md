@@ -35,22 +35,28 @@ The implementation integrates four key mechanisms in sequence:
 
 This repository is structured as a reproducible research implementation: it includes distributed server/client code, dataset handling, round-level metric logging, and a baseline comparison script (`comparison.py`) that reports FedAvg, SecAgg, DP-FL, and PSSA outcomes. The result is a working FL pipeline that is not only paper-aligned in design, but also runnable and inspectable on a standard development system.
 
+When a CUDA-capable GPU is available, the client-side training and server-side evaluation steps automatically move to GPU while the cryptographic aggregation path stays CPU-based.
+
+**Keywords:** Privacy-Preserving, Federated Learning, Secure Aggregation, Homomorphic Encryption, Differential Privacy, Byzantine-Robust, Gradient Compression, Edge Computing, Cybersecurity, NSL-KDD Dataset
+
 ---
 
 ## Table of Contents
 
 1. Problem Statement
 2. Proposed Solution
-3. Mathematical Foundations
+3. How it Works
 4. Pipeline
 5. Results and Metrics
-6. Differences from Paper
-7. Project Structure
-8. Setup and Usage
-9. Limitations
-10. Future Improvements
-11. Team Members and Mentor
-12. Laboratory
+6. Datasets
+7. Differences from Paper
+8. Project Structure
+9. Setup and Usage
+10. System Requirements
+11. Limitations
+12. Future Improvements
+13. Team Members and Mentor
+14. Laboratory
 
 ---
 
@@ -104,37 +110,68 @@ Design choice used in this implementation:
 
 ---
 
-## 3. Mathematical Foundations
+## 3. How it Works
 
-### Eq.1 Local SGD
-$$w_i^{t+1} = w_i^t - \eta \nabla L(w_i^t, D_i)$$
+This section explains the complete end-to-end execution flow from startup to final result logging.
 
-### Eq.2 Weighted FedAvg
-$$w^{t+1} = \sum_{i=1}^{N} \frac{|D_i|}{\sum_j |D_j|} \cdot w_i^{t+1}$$
+### End-to-End Workflow (Start to End)
 
-### Eq.3 Paillier Encryption
-$$E(w_i^{t+1}) = g^{w_i^{t+1}} \cdot r^N \mod N^2$$
+The workflow is now structured exactly to match the architecture visually depicted below.
 
-### Eq.4 HE Aggregation
-$$E(w^{t+1}) = \prod_{i=1}^{N} E(w_i^{t+1}) \mod N^2$$
+1. **Initialization Phase (server.py, data_loader.py)**  
+   - NSL-KDD dataset is loaded and chunked into 5 client data shards.
+   - The Server initializes the Global Model and creates an Adaptive Controller to track hyper-parameters (daptive_controller.py).
 
-### Eq.5 DP Gaussian Noise
-$$\tilde{w}_i^{t+1} = w_i^{t+1} + \mathcal{N}(0, \sigma^2)$$
+2. **Round Broadcast (server.py, utils.py)**  
+   - The loop begins for N total federated communication rounds.
+   - The Server broadcasts the Global Model weights and dynamic parameters (e.g. noise scope, sparsity limit) to all 5 client processes over TCP sockets. 
 
-### Eq.6 Privacy Budget
-$$\Pr[M(D)] \leq e^\epsilon \cdot \Pr[M(D')]$$
+3. **Client Local Training (client.py)**  
+   - Each client trains the latest model natively upon its individual data shard.
+   - The client derives a gradient update (delta).
 
-### Eq.7 Adaptive Quantization
-$$Q(w_i^{t+1}) = \lfloor w_i^{t+1} \cdot 2^b \rfloor / 2^b$$
+4. **Security & Compression Pipeline (differential_privacy.py, pssa_compression.py)**  
+   - **DP**: Gaussian noise is injected into the local gradients dynamically.
+   - **Quantization**: Gradients are encoded/binned down into smaller precision spaces using adaptive thresholds.
+   - **Sparse Sharing**: Only the most significant, non-zero gradient updates are selected for transmission.
 
-### Eq.8 Sparse Gradient Sharing
-$$S(w_i^{t+1}) = \{w_{i,j}^{t+1} \mid |w_{i,j}^{t+1}| > \tau\}$$
+5. **Encryption (homomorphic_encryption.py)**  
+   - The client locks its non-zero sparse matrix values using 1024-bit Paillier Homomorphic Encryption.
 
-### Eq.9 Krum Distance
-$$d(w_i, w_j) = \|w_i - w_j\|_2^2$$
+6. **Encrypted Aggregation & Decryption (server.py, homomorphic_encryption.py)**  
+   - Clients send their secured payloads back to the central server.
+   - The Server performs secure aggregation and then securely decrypts and reconstructs the multidimensional gradient update to a full dense vector shape.
 
-### Eq.10 Krum Selection
-$$w^{t+1} = \arg\min_{w_i} \sum_{j \neq i} d(w_i, w_j)$$
+7. **Byzantine Resilience and Updating (yzantine_resilience.py)**  
+   - A Krum Byzantine monitor reviews the decypted payload, identifying and rejecting potentially malicious outliers.
+   - Valid updates are merged via Weighted Federated Averaging (FedAvg).
+
+8. **Adaption and Evaluation (daptive_controller.py)**  
+   - The server evaluates the updated Global Model's accuracy.
+   - The Server's AdaptiveController tunes parameters based on evaluated performance loss/success, dictating properties for the next communication round.
+
+9. **Loop & Result Logging (metrics_logger.py, comparison.py)**  
+   - The process logs epoch metrics like communication cost, testing accuracy, and privacy budgets to 
+esults/metrics.csv.
+   - The pipeline iterates until all rounds complete, and final plots are auto-generated.
+
+### File Path Mapping by Stage
+
+| Stage | Main File Paths |
+|---|---|
+| Launch and networking | `server.py`, `client.py`, `utils.py` |
+| Data ingest and preprocessing | `data_loader.py`, `KDDTrain+.txt`, `KDDTest+.txt` |
+| Model definition | `model.py` |
+| Differential privacy | `differential_privacy.py` |
+| Compression and sparsification | `pssa_compression.py` |
+| Homomorphic encryption | `homomorphic_encryption.py` |
+| Byzantine monitoring | `byzantine_resilience.py` |
+| Adaptive controls | `adaptive_controller.py` |
+| Metrics and outputs | `metrics_logger.py`, `results/metrics.csv`, `results/*.png` |
+
+### Visual Workflow
+
+![Visual Workflow](images\visual_workflow.png)
 
 ---
 
@@ -215,33 +252,146 @@ $$w^{t+1} = \arg\min_{w_i} \sum_{j \neq i} d(w_i, w_j)$$
 
 ## 5. Results and Metrics
 
-### Training Screenshots
-
-![Server Output - Rounds 1-3](images/server_start.png)
-![Server Output - Final Summary](images/server_final.png)
-![Client A Output](images/client_a.png)
-
 ### Real Baseline Comparison (20 rounds)
 
 ```text
-FedAvg  final accuracy: 74.97%
-SecAgg  final accuracy: 79.68%
-DP-FL   final accuracy: 76.53%
-PSSA    final accuracy: 76.39%
+FedAvg  final accuracy: 77.49%
+SecAgg  final accuracy: 78.47%
+DP-FL   final accuracy: 78.42%
+PSSA    final accuracy: 75.49%
 ```
+
+### PSSA Training Complete - Final Summary
+
+| Item | Value |
+|---|---|
+| Dataset | NSL-KDD |
+| Clients | 5 (A, B, C, D, E) |
+| Rounds | 20 |
+| Local Epochs | 5 |
+| Final Accuracy | 75.49% |
+| Best Accuracy | 77.88% (Round 1) |
+| Avg Enc Time | 63,478.9 ms |
+| Avg Comm Cost | 0.0537 MB (sparse) |
+| Final GLA Rate | 12.50% |
+| Final Epsilon | 372.68 |
+| Krum Winners | {0: 6, 1: 5, 3: 5, 4: 4} |
+
+The comparison plots regenerated from this run are saved in [results](results).
 
 ### Comparison Table
 
 | Method | Paper Accuracy (180 rounds) | Our Accuracy (20 rounds) | Comm Cost | GLA Rate |
 |---|---:|---:|---:|---:|
-| FedAvg | 88.10% | 74.97% | 5.2 MB | 72.30% |
-| SecAgg | ~87% | 79.68% | 7.4 MB | 38.90% |
-| DP-FL | 84.90% | 76.53% | 6.9 MB | 24.20% |
-| PSSA | 90.30% | 76.39% | 4.1 MB | 12.50% |
+| FedAvg | 88.10% | 77.49% | 5.2 MB | 72.30% |
+| SecAgg | ~87% | 78.47% | 7.4 MB | 38.90% |
+| DP-FL | 84.90% | 78.42% | 6.9 MB | 24.20% |
+| PSSA | 90.30% | 75.49% | 4.1 MB | 12.50% |
+
+### Performance Graphs
+
+#### Figure 1: Global Accuracy Convergence (20 Rounds)
+![Accuracy Convergence](results/accuracy_convergence.png)
+*PSSA model shows convergence behavior with final accuracy of 75.49% after 20 training rounds*
+
+#### Figure 2: Accuracy Comparison Across Methods
+![Accuracy Comparison](results/fig3_accuracy_comparison.png)
+*Comparison of FedAvg, SecAgg, DP-FL, and PSSA methods showing PSSA maintains competitive accuracy while providing privacy and compression benefits*
+
+#### Figure 3: Communication Cost Analysis
+![Communication Cost](results/fig4_communication_cost.png)
+*PSSA keeps communication cost low through adaptive quantization and sparse gradient sharing*
+
+#### Figure 4: Privacy Attack Resilience (GLA Success Rate)
+![Privacy Attack Resilience](results/fig5_privacy_attack_resilience.png)
+*Gradient Leakage Attack (GLA) success rate decreases from 86.07% to 12.5% across rounds, demonstrating increasing privacy protection*
+
+#### Figure 5: Encryption Time Per Round
+![Encryption Time](results/fig6_encryption_time.png)
+*Average encryption time across rounds: 63,478.9 ms per round using Paillier HE with 1024-bit key length*
+
+### Metrics Summary (20 Rounds)
+
+| Round | Accuracy | Comm Cost (MB) | GLA Rate (%) | Encryption Time (ms) | Encrypted Params |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 77.88% | 0.0548 | 86.07% | 59,773.38 | 37,808 |
+| 5 | 76.86% | 0.0548 | 47.24% | 61,932.15 | 38,970 |
+| 10 | 77.44% | 0.0548 | 22.31% | 63,106.01 | 39,992 |
+| 15 | 75.83% | 0.0548 | 12.50% | 70,287.56 | 44,387 |
+| 20 | 75.49% | 0.0548 | 12.50% | 61,015.13 | 38,736 |
+
+**Key Observations:**
+- Privacy improves significantly (GLA rate drops from 86% to 12.5%) as DP noise accumulates
+- Communication cost remains consistently low (0.0537 MB sparse average) due to compression
+- Encryption overhead is still the main bottleneck, but GPU support now reduces the local training and evaluation portion when CUDA is available
+- Model achieves 75.49% final accuracy with strong privacy guarantees
 
 ---
 
-## 6. Differences from Paper
+## 6. Datasets
+
+### NSL-KDD Dataset
+
+The NSL-KDD dataset is a refined version of the KDD'99 Intrusion Detection dataset, specifically designed for evaluating network intrusion detection systems in cybersecurity applications.
+
+#### Dataset Download
+ 
+**Kaggle:** https://www.kaggle.com/datasets/hassan06/nslkdd
+
+#### Dataset Properties
+
+| Property | Value | Description |
+|---|---|---|
+| **Dataset Size** | 148,517 records | Total instances in training + test sets |
+| **Training Samples** | ~125,973 | KDDTrain+.txt - used for federated training |
+| **Test Samples** | ~22,544 | KDDTest+.txt - used for model evaluation |
+| **Features** | 41 | Network-based features (protocol, service, flags, bytes, etc.) |
+| **Imbalance Ratio** | ~80:20 | ~80% normal, ~20% anomalous traffic |
+| **Data Format** | CSV | Comma-separated values, one sample per line |
+| **Missing Values** | None | Complete dataset, no missing values |
+| **Normalization** | Min-Max | Features scaled to [0, 1] during preprocessing |
+| **Cyber Domain** | Network Security | Designed for intrusion detection systems |
+
+#### Dataset Files in Project
+
+- **KDDTrain+.txt** (125,973 samples) - Training dataset used to create federated shards
+- **KDDTest+.txt** (22,544 samples) - Test dataset for model evaluation
+
+#### Feature Categories
+
+| Category | Features | Example |
+|---|---|---|
+| **Protocol** | 3 | TCP, UDP, ICMP |
+| **Service** | 70 | HTTP, FTP, DNS, SSH, etc. |
+| **Flags** | 11 | SYN, ACK, FIN, RST, etc. |
+| **Traffic Metrics** | 13 | src_bytes, dst_bytes, duration, etc. |
+| **Connection Info** | 20 | land, wrong_fragment, urgent, etc. |
+
+#### Data Distribution in Federated Setup
+
+```
+Training Dataset: 125,973 samples
+         |
+         v
+   5 Clients (Shards)
+         |
+    +----+----+----+----+
+    |    |    |    |    |
+   25K  25K  25K  25K  25K  (samples per client)
+```
+
+Each client receives approximately 25,000 samples to train locally with differential privacy and secure aggregation.
+
+#### Dataset Relevance
+
+- **Cybersecurity Use Case**: NSL-KDD is specifically designed for network intrusion detection
+- **Edge Computing Scenario**: Suitable for distributed edge nodes monitoring network traffic
+- **Privacy Concerns**: Raw network traffic data is sensitive; PSSA ensures privacy during collaborative training
+- **Real-World Applicability**: Based on actual network packet data and attack patterns
+
+---
+
+## 7. Differences from Paper
 
 This implementation is aligned with the paper at the algorithm level, but a few practical differences remain due to project scope and runtime constraints:
 
@@ -263,7 +413,7 @@ This implementation is aligned with the paper at the algorithm level, but a few 
 
 ---
 
-## 7. Project Structure
+## 8. Project Structure
 
 ```text
 TTEH Project/
@@ -288,7 +438,7 @@ TTEH Project/
 
 ---
 
-## 8. Setup and Usage
+## 9. Setup and Usage
 
 ### Install
 
@@ -332,7 +482,65 @@ python comparison.py
 
 ---
 
-## 9. Limitations
+## 10. System Requirements
+
+### Minimum Requirements
+
+| Component | Minimum Specification |
+|---|---|
+| **Operating System** | Windows 10 / Windows 11, macOS 10.15+, Ubuntu 18.04+ |
+| **Python Version** | Python 3.9+ |
+| **RAM** | 8 GB |
+| **Disk Space** | 2 GB (including virtual environment and datasets) |
+| **GPU** | NVIDIA GeForce RTX 20-series (or newer) with CUDA support |
+| **Network** | Local network connectivity for multi-process communication |
+
+### Tested Configuration
+
+This project was developed and tested on:
+
+| Component | Specification |
+|---|---|
+| **OS** | Windows 11 (Build 22621+) |
+| **Processor** | Intel Core i7 (20 logical cores) |
+| **RAM** | 16 GB DDR5 |
+| **Storage** | SSD with 10+ GB free space |
+| **Python** | Python 3.11.x |
+| **GPU** | NVIDIA GeForce RTX 4050 (6 GB) |
+
+### Python Dependencies
+
+All required packages are listed in `requirements.txt`:
+
+```text
+torch>=2.0.0
+numpy>=1.24.0
+phe>=1.5.0          # Paillier Homomorphic Encryption
+scipy>=1.10.0
+scikit-learn>=1.3.0
+matplotlib>=3.7.0   # For result visualization
+pandas>=2.0.0       # For metrics logging
+```
+
+### Performance Notes
+
+- **Encryption overhead**: Paillier HE encryption takes about 54-76 seconds per round on standard hardware
+- **GPU acceleration**: Client training and server evaluation use GPU automatically when CUDA is available; encryption remains CPU-bound
+- **Multi-process execution**: All 6 processes (1 server + 5 clients) can run on a single machine with 8GB+ RAM
+- **Training time**: One complete 20-round training session takes approximately 30-45 minutes on recommended hardware
+- **Memory usage**: Each client process uses ~500MB; server uses ~300MB
+
+### Installation Verification
+
+After setup, verify the environment:
+
+```bash
+python -c "import torch; import phe; import numpy; print('✓ All dependencies installed')"
+```
+
+---
+
+## 11. Limitations
 
 - This project commonly reports 20-round runs for practical runtime reasons, so final accuracy trends should not be interpreted as full-convergence behavior compared with 180-round research settings.
 - Homomorphic encryption cost is high in this implementation because it uses Python `phe` without low-level acceleration; this increases per-round latency on standard hardware.
@@ -342,7 +550,7 @@ python comparison.py
 
 ---
 
-## 10. Future Improvements
+## 12. Future Improvements
 
 - Extend training to longer schedules (for example 100-180 rounds) with checkpointing and early-stopping analysis to compare convergence behavior more directly with paper-scale results.
 - Replace or optimize the HE backend with faster cryptographic implementations (native extensions/GPU-aware libraries) to reduce encryption and aggregation latency.
@@ -353,7 +561,7 @@ python comparison.py
 
 ---
 
-## 11. Team Members and Mentor
+## 13. Team Members and Mentor
 
 ### Team
 
@@ -361,8 +569,8 @@ python comparison.py
 |---|---|---|
 | MALLIKARJUN R | ENG24CY1003 | mallikarjunmallu501@gmial.com |
 | ADIL BAGWAN | ENG23CY0048 | adilb5556@gmail.com |
-| DEERAJ VAMSI M | ENG23CY0060 | eng23cy0060@dsu.edu.in |
-| B V SATHVIK | ENG23CY0008 | eng23cy0008@dsu.edu.in |
+| DEERAJ VAMSI M | ENG23CY0060 | deerajvamsi1@gmail.com |
+| B V SATHVIK | ENG23CY0008 | bv.sathvik4@gmail.com |
 
 ### Mentor
 
@@ -373,7 +581,21 @@ Email: prajwasimha.sn1@gmail.com
 
 ---
 
-## 12. 🔬Laboratory
+## 14. 🔬Laboratory
  
 TTEH LAB · School of Engineering · Dayananda Sagar University  
 Bangalore - 562112, Karnataka, India
+
+<p align="left">
+  <img src="images\Dayananda-Sagar-University-Logo.png" alt="Dayananda Sagar University Logo" width="300"/>
+</p>
+
+---
+
+## 15. License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for the full text.
+
+The license applies to the project source code and documentation. Third-party assets, including datasets and logos, may be subject to their own usage terms.
+
+

@@ -14,6 +14,9 @@ from differential_privacy import add_gaussian_noise
 from homomorphic_encryption import encrypt_weights, generate_paillier_keypair
 from model import get_model
 from pssa_compression import adaptive_quantization, sparse_gradient_sharing
+from device_utils import get_device
+
+DEVICE = get_device("auto")
 
 NUM_CLIENTS = 5
 NUM_ROUNDS = 20
@@ -31,12 +34,14 @@ def local_train(model, loader, epochs=LOCAL_EPOCHS, lr=LEARNING_RATE):
     model.train()
     for _ in range(epochs):
         for data, target in loader:
+            data = data.to(DEVICE, non_blocking=True)
+            target = target.to(DEVICE, non_blocking=True)
             optimizer.zero_grad()
             output = model(data)
             loss = criterion(output, target)
             loss.backward()
             optimizer.step()
-    return parameters_to_vector(model.parameters()).detach().numpy().copy()
+    return parameters_to_vector(model.parameters()).detach().cpu().numpy().copy()
 
 
 def evaluate(model, test_loader):
@@ -44,6 +49,8 @@ def evaluate(model, test_loader):
     correct = total = 0
     with torch.no_grad():
         for data, target in test_loader:
+            data = data.to(DEVICE, non_blocking=True)
+            target = target.to(DEVICE, non_blocking=True)
             preds = model(data)
             labels = (preds >= 0.5).float()
             correct += (labels == target).sum().item()
@@ -63,18 +70,18 @@ def compute_comm_cost_mb(weights, mode="uncompressed"):
 
 def run_fedavg(client_loaders, test_loader, input_dim):
     print("\n=== Running FedAvg Baseline ===")
-    global_model = get_model(input_dim)
+    global_model = get_model(input_dim).to(DEVICE)
     accuracies = []
     comm_costs = []
 
     for round_idx in range(1, NUM_ROUNDS + 1):
-        global_weights = parameters_to_vector(global_model.parameters()).detach().numpy().copy()
+        global_weights = parameters_to_vector(global_model.parameters()).detach().cpu().numpy().copy()
         client_updates = []
         dataset_sizes = []
 
         for loader in client_loaders:
-            model = get_model(input_dim)
-            vector_to_parameters(torch.from_numpy(global_weights).float(), model.parameters())
+            model = get_model(input_dim).to(DEVICE)
+            vector_to_parameters(torch.from_numpy(global_weights).float().to(DEVICE), model.parameters())
             new_weights = local_train(model, loader)
             delta = new_weights - global_weights
             client_updates.append(delta)
@@ -86,7 +93,7 @@ def run_fedavg(client_loaders, test_loader, input_dim):
             avg_delta += (ds / total_data) * delta
 
         new_global = global_weights + avg_delta
-        vector_to_parameters(torch.from_numpy(new_global).float(), global_model.parameters())
+        vector_to_parameters(torch.from_numpy(new_global).float().to(DEVICE), global_model.parameters())
 
         acc = evaluate(global_model, test_loader)
         comm = compute_comm_cost_mb(avg_delta, "uncompressed")
@@ -100,19 +107,19 @@ def run_fedavg(client_loaders, test_loader, input_dim):
 def run_secagg(client_loaders, test_loader, input_dim):
     print("\n=== Running SecAgg Baseline ===")
     public_key, private_key = generate_paillier_keypair(key_length=1024)
-    global_model = get_model(input_dim)
+    global_model = get_model(input_dim).to(DEVICE)
     accuracies = []
     comm_costs = []
     enc_times = []
 
     for round_idx in range(1, NUM_ROUNDS + 1):
-        global_weights = parameters_to_vector(global_model.parameters()).detach().numpy().copy()
+        global_weights = parameters_to_vector(global_model.parameters()).detach().cpu().numpy().copy()
         encrypted_updates = []
         dataset_sizes = []
 
         for loader in client_loaders:
-            model = get_model(input_dim)
-            vector_to_parameters(torch.from_numpy(global_weights).float(), model.parameters())
+            model = get_model(input_dim).to(DEVICE)
+            vector_to_parameters(torch.from_numpy(global_weights).float().to(DEVICE), model.parameters())
             new_weights = local_train(model, loader)
             delta = new_weights - global_weights
 
@@ -144,7 +151,7 @@ def run_secagg(client_loaders, test_loader, input_dim):
             avg_delta[idx] = private_key.decrypt(enc_sum) / (NUM_CLIENTS * SCALE_FACTOR)
 
         new_global = global_weights + avg_delta
-        vector_to_parameters(torch.from_numpy(new_global).float(), global_model.parameters())
+        vector_to_parameters(torch.from_numpy(new_global).float().to(DEVICE), global_model.parameters())
 
         acc = evaluate(global_model, test_loader)
         comm = compute_comm_cost_mb(avg_delta, "uncompressed")
@@ -157,18 +164,18 @@ def run_secagg(client_loaders, test_loader, input_dim):
 
 def run_dpfl(client_loaders, test_loader, input_dim):
     print("\n=== Running DP-FL Baseline ===")
-    global_model = get_model(input_dim)
+    global_model = get_model(input_dim).to(DEVICE)
     accuracies = []
     comm_costs = []
 
     for round_idx in range(1, NUM_ROUNDS + 1):
-        global_weights = parameters_to_vector(global_model.parameters()).detach().numpy().copy()
+        global_weights = parameters_to_vector(global_model.parameters()).detach().cpu().numpy().copy()
         client_updates = []
         dataset_sizes = []
 
         for loader in client_loaders:
-            model = get_model(input_dim)
-            vector_to_parameters(torch.from_numpy(global_weights).float(), model.parameters())
+            model = get_model(input_dim).to(DEVICE)
+            vector_to_parameters(torch.from_numpy(global_weights).float().to(DEVICE), model.parameters())
             new_weights = local_train(model, loader)
             delta = new_weights - global_weights
             noisy_delta = add_gaussian_noise(delta, NOISE_STD)
@@ -181,7 +188,7 @@ def run_dpfl(client_loaders, test_loader, input_dim):
             avg_delta += (ds / total_data) * delta
 
         new_global = global_weights + avg_delta
-        vector_to_parameters(torch.from_numpy(new_global).float(), global_model.parameters())
+        vector_to_parameters(torch.from_numpy(new_global).float().to(DEVICE), global_model.parameters())
 
         acc = evaluate(global_model, test_loader)
         comm = compute_comm_cost_mb(avg_delta, "uncompressed")

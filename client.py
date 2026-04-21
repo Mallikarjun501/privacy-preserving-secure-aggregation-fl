@@ -11,6 +11,7 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 from data_loader import load_client_data
 from differential_privacy import add_gaussian_noise
+from device_utils import get_device
 from homomorphic_encryption import encrypt_weights
 from model import get_model
 from pssa_compression import adaptive_quantization, sparse_gradient_sharing
@@ -18,15 +19,17 @@ from utils import recv_msg, send_msg
 
 
 class FederatedClient:
-    def __init__(self, client_id: str, local_loader, input_dim: int, host: str = "127.0.0.1", port: int = 12345):
+    def __init__(self, client_id: str, local_loader, input_dim: int, host: str = "127.0.0.1", port: int = 12345, device: str = "auto"):
         self.client_id = client_id
         self.local_loader = local_loader
-        self.model = get_model(input_dim)
+        self.device = get_device(device)
+        self.model = get_model(input_dim).to(self.device)
         self.host = host
         self.port = port
 
         self.scale_factor = 1e6
         self.sock = None
+        logging.info("[%s] Using device: %s", self.client_id, self.device)
 
     def connect(self) -> None:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -35,7 +38,7 @@ class FederatedClient:
         logging.info("[%s] Connected to server %s:%s", self.client_id, self.host, self.port)
 
     def set_model_weights(self, weights_vector: np.ndarray) -> None:
-        vector_to_parameters(torch.from_numpy(weights_vector).float(), self.model.parameters())
+        vector_to_parameters(torch.from_numpy(weights_vector).float().to(self.device), self.model.parameters())
 
     def local_train(self, learning_rate: float = 0.01, local_epochs: int = 1) -> np.ndarray:
         criterion = nn.BCELoss()
@@ -44,13 +47,15 @@ class FederatedClient:
         self.model.train()
         for _ in range(local_epochs):
             for data, target in self.local_loader:
+                data = data.to(self.device, non_blocking=True)
+                target = target.to(self.device, non_blocking=True)
                 optimizer.zero_grad()
                 output = self.model(data)
                 loss = criterion(output, target)
                 loss.backward()
                 optimizer.step()
 
-        return parameters_to_vector(self.model.parameters()).detach().numpy()
+        return parameters_to_vector(self.model.parameters()).detach().cpu().numpy().copy()   
 
     def pssa_pipeline(self, global_weights: np.ndarray, public_key, noise_std: float, bit_precision: int, threshold: float):
         self.set_model_weights(global_weights)
@@ -155,6 +160,7 @@ if __name__ == "__main__":
     parser.add_argument("client_id", type=str, help="Client ID, e.g., A/B/C/D/E")
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--port", type=int, default=12345)
+    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"], help="Torch device to use")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -165,5 +171,5 @@ if __name__ == "__main__":
         raise ValueError("client_id must be one of A, B, C, D, E")
 
     local_loader, input_dim = load_client_data(shard_id, data_dir="data")
-    client = FederatedClient(client_id=args.client_id.upper(), local_loader=local_loader, input_dim=input_dim, host=args.host, port=args.port)
+    client = FederatedClient(client_id=args.client_id.upper(), local_loader=local_loader, input_dim=input_dim, host=args.host, port=args.port, device=args.device)
     client.run()

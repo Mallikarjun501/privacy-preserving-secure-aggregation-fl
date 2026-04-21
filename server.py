@@ -9,6 +9,7 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from byzantine_resilience import krum_filter
 from data_loader import prepare_data_shards
 from differential_privacy import compute_epsilon
+from device_utils import get_device
 from homomorphic_encryption import generate_paillier_keypair
 from metrics_logger import MetricsLogger
 from model import get_model
@@ -18,14 +19,16 @@ from adaptive_controller import AdaptiveController
 
 
 class FederatedServer:
-    def __init__(self, input_dim: int, num_clients: int = 5, num_rounds: int = 20, host: str = "127.0.0.1", port: int = 12345):
+    def __init__(self, input_dim: int, num_clients: int = 5, num_rounds: int = 20, host: str = "127.0.0.1", port: int = 12345, device: str = "auto"):
         self.input_dim = input_dim
         self.num_clients = num_clients
         self.num_rounds = num_rounds
         self.host = host
         self.port = port
 
-        self.global_model = get_model(input_dim)
+        self.device = get_device(device)
+        logging.info("[SERVER] Using device: %s", self.device)
+        self.global_model = get_model(input_dim).to(self.device)
         self.public_key, self.private_key = generate_paillier_keypair(key_length=1024)
         self.scale_factor = 1e6
         self.metrics_logger = MetricsLogger(results_dir="results")
@@ -43,6 +46,8 @@ class FederatedServer:
         correct = 0
         with torch.no_grad():
             for data, target in test_loader:
+                data = data.to(self.device, non_blocking=True)
+                target = target.to(self.device, non_blocking=True)
                 preds = self.global_model(data)
                 labels = (preds >= 0.5).float()
                 correct += (labels == target).sum().item()
@@ -115,7 +120,7 @@ class FederatedServer:
         return encrypted_updates, sparse_updates, enc_times, dataset_sizes, client_ids
 
     def _apply_aggregated_update(self, encrypted_updates: List[dict]) -> np.ndarray:
-        current_global = parameters_to_vector(self.global_model.parameters()).detach().numpy()
+        current_global = parameters_to_vector(self.global_model.parameters()).detach().cpu().numpy().copy()
         averaged_update = np.zeros_like(current_global)
 
         aggregated_sparse = {}
@@ -151,7 +156,7 @@ class FederatedServer:
 
             for round_idx in range(1, self.num_rounds + 1):
                 logging.info("[SERVER] ===== Round %d/%d =====", round_idx, self.num_rounds)
-                global_weights = parameters_to_vector(self.global_model.parameters()).detach().numpy()
+                global_weights = parameters_to_vector(self.global_model.parameters()).detach().cpu().numpy().copy()
 
                 raw_round_params = self.adaptive_controller.get_params_for_round()
                 sorted_client_ids = sorted(self.clients.keys())
@@ -173,7 +178,7 @@ class FederatedServer:
                 he_averaged_update = self._apply_aggregated_update(encrypted_updates)
 
                 # STEP 2: Build HE-decrypted per-client vectors for Krum Byzantine detection.
-                total_params = len(parameters_to_vector(self.global_model.parameters()).detach().numpy())
+                total_params = int(parameters_to_vector(self.global_model.parameters()).numel())
                 per_client_decrypted = []
                 for update_map in encrypted_updates:
                     client_vec = np.zeros(total_params)
@@ -201,9 +206,9 @@ class FederatedServer:
                     weighted_avg_update += (ds / total_data) * client_vec
 
                 # STEP 5: Update global model with weighted average delta.
-                current_global = parameters_to_vector(self.global_model.parameters()).detach().numpy().copy()
+                current_global = parameters_to_vector(self.global_model.parameters()).detach().cpu().numpy().copy()
                 new_global = current_global + weighted_avg_update
-                vector_to_parameters(torch.from_numpy(new_global).float(), self.global_model.parameters())
+                vector_to_parameters(torch.from_numpy(new_global).float().to(self.device), self.global_model.parameters())
 
                 comm_costs = {
                     "uncompressed": compute_communication_cost_mb(weighted_avg_update, "uncompressed"),
@@ -273,5 +278,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
     test_loader, input_dim = prepare_data_shards(num_clients=5, data_dir="data")
-    server = FederatedServer(input_dim=input_dim, num_clients=5, num_rounds=20, host="127.0.0.1", port=12345)
+    server = FederatedServer(input_dim=input_dim, num_clients=5, num_rounds=20, host="127.0.0.1", port=12345, device="auto")
     server.run(test_loader)
