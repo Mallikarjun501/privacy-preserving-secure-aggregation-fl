@@ -171,6 +171,8 @@ esults/metrics.csv.
 
 ### Visual Workflow
 
+#### Figure 1: Visual Workflow
+
 ![Visual Workflow](images/visual_workflow.png)
 
 ---
@@ -290,24 +292,24 @@ The comparison plots regenerated from this run are saved in [results](results).
 
 ### Performance Graphs
 
-#### Figure 1: Global Accuracy Convergence (20 Rounds)
-![Accuracy Convergence](results/accuracy_convergence.png)
+#### Figure 2: Global Accuracy Convergence (20 Rounds)
+![Accuracy Convergence](results/fig1_accuracy_convergence.png)
 *PSSA model shows convergence behavior with final accuracy of 75.49% after 20 training rounds*
 
-#### Figure 2: Accuracy Comparison Across Methods
-![Accuracy Comparison](results/fig3_accuracy_comparison.png)
+#### Figure 3: Accuracy Comparison Across Methods
+![Accuracy Comparison](results/fig2_accuracy_comparison.png)
 *Comparison of FedAvg, SecAgg, DP-FL, and PSSA methods showing PSSA maintains competitive accuracy while providing privacy and compression benefits*
 
-#### Figure 3: Communication Cost Analysis
-![Communication Cost](results/fig4_communication_cost.png)
+#### Figure 4: Communication Cost Analysis
+![Communication Cost](results/fig3_communication_cost.png)
 *PSSA keeps communication cost low through adaptive quantization and sparse gradient sharing*
 
-#### Figure 4: Privacy Attack Resilience (GLA Success Rate)
-![Privacy Attack Resilience](results/fig5_privacy_attack_resilience.png)
+#### Figure 5: Privacy Attack Resilience (GLA Success Rate)
+![Privacy Attack Resilience](results/fig4_privacy_attack_resilience.png)
 *Gradient Leakage Attack (GLA) success rate decreases from 86.07% to 12.5% across rounds, demonstrating increasing privacy protection*
 
-#### Figure 5: Encryption Time Per Round
-![Encryption Time](results/fig6_encryption_time.png)
+#### Figure 6: Encryption Time Per Round
+![Encryption Time](results/fig5_encryption_time.png)
 *Average encryption time across rounds: 63,478.9 ms per round using Paillier HE with 1024-bit key length*
 
 ### Metrics Summary (20 Rounds)
