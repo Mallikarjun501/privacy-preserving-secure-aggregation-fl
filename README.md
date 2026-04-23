@@ -3,7 +3,7 @@
 # PSSA: Privacy-Preserving and Scalable Secure Aggregation for Federated Learning in Edge Computing
 
 IEEE ICC-ROBINS 2025 - Research Implementation  
-TTEH Research Lab
+TTEH Lab
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-orange)
