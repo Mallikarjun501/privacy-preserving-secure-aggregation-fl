@@ -401,17 +401,13 @@ This implementation is aligned with the paper at the algorithm level, but a few 
 - Paper reports full convergence with longer training (180 rounds).
 - This project commonly demonstrates 20-round runs for manageable execution time.
 
-2. Encryption performance stack:
-- Paper reports faster cryptographic runtime under optimized settings.
-- This project uses Python `phe`, which is correct but slower in pure-Python execution.
+2. Privacy attack evaluation style:
+- Paper evaluates privacy using direct gradient inversion attacks.
+- This implementation reports a simpler proxy metric: the GLA trend (lower GLA means better privacy).
 
-3. Privacy attack evaluation style:
-- Paper discusses direct gradient inversion attack resilience evaluation.
-- This implementation uses a documented proxy-style GLA trend in reporting.
-
-4. Dataset scope:
-- Paper presents broader benchmarking context.
-- This project is focused on NSL-KDD to match the cybersecurity use case and keep execution reproducible.
+3. Dataset scope:
+- Paper reports results in a multi-dataset benchmarking context.
+- This project uses only NSL-KDD to keep the cybersecurity setting focused.
 
 ---
 
@@ -509,28 +505,6 @@ This project was developed and tested on:
 | **Storage** | SSD with 10+ GB free space |
 | **Python** | Python 3.11.x |
 | **GPU** | NVIDIA GeForce RTX 4050 (6 GB) |
-
-### Python Dependencies
-
-All required packages are listed in `requirements.txt`:
-
-```text
-torch>=2.0.0
-numpy>=1.24.0
-phe>=1.5.0          # Paillier Homomorphic Encryption
-scipy>=1.10.0
-scikit-learn>=1.3.0
-matplotlib>=3.7.0   # For result visualization
-pandas>=2.0.0       # For metrics logging
-```
-
-### Performance Notes
-
-- **Encryption overhead**: Paillier HE encryption takes about 54-76 seconds per round on standard hardware
-- **GPU acceleration**: Client training and server evaluation use GPU automatically when CUDA is available; encryption remains CPU-bound
-- **Multi-process execution**: All 6 processes (1 server + 5 clients) can run on a single machine with 8GB+ RAM
-- **Training time**: One complete 20-round training session takes approximately 30-45 minutes on recommended hardware
-- **Memory usage**: Each client process uses ~500MB; server uses ~300MB
 
 ### Installation Verification
 
