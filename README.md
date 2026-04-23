@@ -403,7 +403,7 @@ This implementation is aligned with the paper at the algorithm level, but a few 
 
 2. Privacy attack evaluation style:
 - Paper evaluates privacy using direct gradient inversion attacks.
-- This implementation reports a simpler proxy metric: the GLA trend (lower GLA means better privacy).
+- This implementation reports a simple proxy metric: the GLA trend (lower GLA means better privacy).
 
 3. Dataset scope:
 - Paper reports results in a multi-dataset benchmarking context.
