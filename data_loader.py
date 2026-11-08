@@ -12,7 +12,7 @@ def download_file(url, local_path):
         print(f"{os.path.basename(local_path)} already exists.")
         return
     print(f"Downloading {os.path.basename(local_path)}...")
-    with requests.get(url, stream=True) as r:
+    with requests.get(url, stream=True, timeout=30) as r:
         r.raise_for_status()
         total_size = int(r.headers.get('content-length', 0))
         with open(local_path, 'wb') as f, tqdm(
